@@ -16,10 +16,8 @@ class Problem:
 class TestProblem:  # RC04
     def __init__(self):
         self.dim = 4
-        self.h_num = 4
-        self.g_num = 1
-        self.up_bounds = [1, 1, 1, 1, 16, 16]
-        self.low_bounds = [0, 0, 0, 0, 0.00001, 0.00001]
+        self.up_bounds = [100, 100, 100, 100]
+        self.low_bounds = [-100, -100, -100, -100]
 
     def objctive_function(self, x):
         y = x[0]**2 + x[1]**2 + x[2]**2 + x[3]**2
