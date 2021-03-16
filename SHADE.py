@@ -1,60 +1,121 @@
+#-- coding: utf-8 --
+#@Time : 2021/3/16 23:46
+#@Author : HUANG XUYANG
+#@Email : xhuang032@e.ntu.edu.sg
+#@File : SHADE.py
+#@Software: PyCharm
+
 import numpy as np
-from Problem_Set.problem_set_bounds_constrained import Problem
+from open_source_version.SHADE.bound_constrained_problem_set import Problem
 
 
-NP = 100
-INIT_CR_MEAN = 0.5
+NP = 100  # Number of population
+INIT_CR_MEAN = 0.3  # CR is the crossover probability
 CR_STD = 0.1
-INIT_F_MEAN = 0.1
-F_SCALING = 0.1
-H = 20
-DIFFERENCE_NUM = 1
-MAX_FES = 5e4
+INIT_F_MEAN = 0.1  # F is the scaling factor when mutation
+F_SCALING_FACTOR = 0.1
+H = 5
+DIFFERENCE_NUM = 1  # This variable means how many pairs of individual difference when do the current-to-pbest mutation
+MAX_FES = 1e5  # The max times number of function evaluation running
 
 
 class SHADE:
+    """SHADE algorithm
+
+    Just set some parameters and type problem in problem set py file,
+    then run function 'run_shade' to get a optimization result.
+
+    Attributes:
+
+        'Regular DE parameters'
+        problem: A class object generated from Problem(problem num in problem set py file).
+        population_num: An integer of number of population.
+        generation: A integer of the max generation to run SHADE.
+        dim: A integer of the dimension of problem, it will be set in the problem set py file.
+        low_bounds: A Numpy array shape is (population_num, dim),
+            the lower bounds for each element in x, same dimension has same bounds.
+        up_bounds: A Numpy array like low_bounds, but upper bounds.
+        x: A Numpy array of the parent in DE, shape is (population_num, dim).
+        u: A Numpy array shape like x, the offspring in DE.
+        v: A Numpy array shape like x, the gene library generated for crossover.
+        x_eval_result: A Numpy array shape is (population_num), the evaluation value of parent x solutions.
+        u_eval_result: A Numpy array shape like x_eval_result, the evaluation value of offspring u solutions.
+        difference_num: An integer of the differential term number in mutation strategy.
+
+         'Adaptive parameters'
+        h: An integer of memory size.
+        m_f: A Numpy array shape is (memory size), the memory storage historical success scaling factor.
+        m_cr: A Numpy array shape is like m_f,  the memory storage historical success crossover probability.
+        cr_std: A floating number of standard deviation while generate CR obeying uniform distribution.
+        f_scaling_factor: A floating number, the scaling factor of Cauchy distribution for generating f.
+        archive: A Numpy array, storage recent bad offspring may reused.
+        current_generation: An integer.
+
+        _sort_mat: A Numpy array, not in original SHADE just using for generating x_r faster.
+
+    """
     def __init__(self, problem_num, population_num=40, init_cr_mean=0.5, cr_std=0.1, init_f_mean=0.1, 
                  f_scaling_factor=0.1, h=5, difference_num=1, max_fes=1e5):
+        # Regular DE parameters
         self.problem = Problem(problem_num)
         self.population_num = population_num
-        self.h = h
-        self.f_scaling = f_scaling_factor
-        self.cr_std = cr_std
-        max_eval_num = max_fes
-        self.generation = int(max_eval_num / population_num)
+        max_eval_num = np.ceil(self.problem.dim / 10) * max_fes
+        self.generation = int(max_eval_num / self.population_num)
         self.dim = self.problem.dim
         self.low_bounds = np.array(self.problem.low_bounds)[np.newaxis, :]
         self.low_bounds = np.repeat(self.low_bounds, self.population_num, axis=0)
         self.up_bounds = np.array(self.problem.up_bounds)[np.newaxis, :]
         self.up_bounds = np.repeat(self.up_bounds, self.population_num, axis=0)
-        self.x = self.low_bounds + np.random.rand(population_num, self.dim) * (self.up_bounds - self.low_bounds)
+        self.x = self.low_bounds + np.random.rand(self.population_num, self.dim) * (self.up_bounds - self.low_bounds)
         self.u = self.x.copy()
         self.v = self.x.copy()
-        self.archive = self.x[np.random.randint(0, self.population_num), :][np.newaxis, :]
-        self.difference_num = difference_num
         self.x_eval_result = self.problem.objective_function(self.x)
         self.u_eval_result = self.x_eval_result.copy()
-        self.current_generation = 0
+        self.best_feasible_solution, self.best_feasible_fitness = np.nan, np.nan
+        self.violation = np.zeros([self.population_num, self.dim])
+        self.difference_num = difference_num
+
+        # Adaptive parameters
+        self.h = h
         self.m_f = np.array([init_f_mean for i in range(self.h)])
         self.m_cr = np.array([init_cr_mean for i in range(self.h)])
-        self.sample_pool = np.zeros([self.population_num, self.population_num - 1])
+        self.cr_std = cr_std
+        self.f_scaling_factor = f_scaling_factor
+        self.archive = self.x[np.random.randint(0, self.population_num), :][np.newaxis, :]
+
+        self.current_generation = 0
+
+        # _sort_mat is not in original SHADE just using for generating x_r faster
+        self._sort_mat = np.zeros([self.population_num, self.population_num - 1])
         for i in range(self.population_num):
             sample_pool_tmp = np.arange(0, self.population_num)
             sample_pool_tmp = np.delete(sample_pool_tmp, i)
-            self.sample_pool[i] = sample_pool_tmp.copy()
+            self._sort_mat[i] = sample_pool_tmp.copy()
 
     def de_current_to_pbest(self, factor):
+        """generate and update mutation library v obeying DE/current-to-best/1 mutation strategy with an archive method.
+
+        Find the pbest, generate differential terms in list x_r, if difference number is 1, get 2 Numpy array in
+        x_r, finally v = x + f * (pbest - x) + f * (x_r0 - x_r1), where x_r1 is picked from archive.
+
+        :param factor: A Numpy array shape is (population_num, 1), the scaling factor when generating v in mutation.
+        :return: No return.
+        """
+        # Get pbest.
         best_p_select_range = np.random.uniform(2 / self.population_num, 0.2)
         sort_group_index = np.argsort(self.x_eval_result)[0: int(best_p_select_range * self.population_num)]
-        member_num = 2 * self.difference_num
-        x_r = np.zeros([member_num, self.population_num, self.dim], np.float32)
         x_best_group = self.x[sort_group_index].copy()
         best_rand_index = np.random.choice(np.arange(0, len(sort_group_index)), self.population_num)
         x_best = x_best_group[best_rand_index]
+
+        # Get x_r, the differential terms after current2pbest terms.
+        member_num = 2 * self.difference_num
+        x_r = np.zeros([member_num, self.population_num, self.dim], np.float32)
         for i in range(member_num-1):
             x_r_index_tmp = self.sample_pool[(np.arange(self.population_num), np.random.randint(0, self.dim, self.population_num))].astype(
                 np.int64)
             x_r[i] = self.x[x_r_index_tmp]
+        # Get last x_r from union of archive and pbest
         archive_random_pool = np.array([np.arange(self.dim) for _ in range(len(self.archive))])
         x_r_index_tmp = self.sample_pool[(np.arange(self.population_num), np.random.randint(0, self.dim, self.population_num))].astype(np.int64)
         x_a_r_index_tmp = archive_random_pool[(np.arange(len(self.archive)),
@@ -62,11 +123,20 @@ class SHADE:
         x_a_r_index = np.concatenate([x_a_r_index_tmp, x_r_index_tmp], 0)
         np.random.shuffle(x_a_r_index)
         x_r[member_num-1] = self.x[x_a_r_index[:self.population_num]]
+
+        # Update v for crossover.
         self.v = self.x + factor * (x_best - self.x)
         for i in range(self.difference_num):
             self.v += factor * (x_r[i * 2] - x_r[i * 2 + 1])
 
     def uniform_crossover(self, cr):
+        """Do uniform crossover
+
+        After update v, using cr to generate offspring u, and do bound constrained handling.
+
+        :param cr: A Numpy array, shape is like x, each dimension of each individual has a crossover probability value.
+        :return: No return
+        """
         self.u = np.copy(self.x)
         r_xover = np.random.rand(self.population_num, self.dim)
         xover_index = np.where(r_xover <= cr)
@@ -76,12 +146,19 @@ class SHADE:
         self.u = np.clip(self.u, self.low_bounds, self.up_bounds)
 
     def selection(self):
+        """Do selection
+
+        Compare offspring and parents, update population and archive.
+
+        """
         self.u_eval_result = self.problem.objective_function(self.u)
         replace_index = np.where(self.u_eval_result <= self.x_eval_result)
         success_index = np.where(self.u_eval_result < self.x_eval_result)
         self.x[replace_index] = self.u[replace_index].copy()
         self.x_eval_result[replace_index] = self.u_eval_result[replace_index].copy()
         self.archive = np.concatenate([self.archive, self.x[success_index]], 0)
+
+        # If archive size is larger than population, randomly delete to size of population.
         if len(self.archive) > self.population_num:
             rand_index = np.arange(0, len(self.archive))
             np.random.shuffle(rand_index)
@@ -89,14 +166,24 @@ class SHADE:
         return replace_index, success_index
     
     def update_adaptive_para(self, f, cr, success_index):
+        """Update memory
+
+        :param f: A Numpy array shape is (population_num, 1), the scaling factor when generating v in mutation.
+        :param cr: A Numpy array, shape is like x, each dimension of each individual has a crossover probability value.
+        :param success_index: An tuple of index returned by np.where(), useful f and cr index we think.
+        :return: No return.
+        """
         if len(success_index[0]) > 0:
+            # Using Lehmer mean for f.
             f_set = np.mean(f[success_index], axis=1)
             f_m = np.sum(f_set ** 2) / np.sum(f_set)
             self.m_f = np.delete(self.m_f, 0)
             self.m_f = np.append(self.m_f, f_m)
+            # Using arithmetic mean for cr.
             cr_m = np.mean(cr[success_index])
             self.m_cr = np.delete(self.m_cr, 0)
             self.m_cr = np.append(self.m_cr, cr_m)
+        # If no success f and cr, use last value as new value, delete earliest one.
         else:
             self.m_cr = np.delete(self.m_cr, 0)
             self.m_cr = np.append(self.m_cr, self.m_cr[-1])
@@ -104,6 +191,13 @@ class SHADE:
             self.m_f = np.append(self.m_f, self.m_f[-1])
 
     def process(self):
+        """Organize all steps
+
+        The whole process of one iteration.
+
+        :return: Optimization result in this iteration.
+        """
+        # Generate f.
         memory_rand_index = np.random.randint(0, self.h)
         f = np.random.standard_cauchy([self.population_num, 1]) * self.f_scaling + self.m_f[memory_rand_index]
         regenerate_index = f <= 0
@@ -113,12 +207,19 @@ class SHADE:
             regenerate_index = f <= 0
         f = np.clip(f, 0, 1)
         f = np.repeat(f, self.dim, 1)
+
         self.de_current_to_pbest(f)
+
+        # Generate cr.
         cr = np.random.normal(self.m_cr[memory_rand_index], self.cr_std, [self.population_num, self.dim])
         cr = np.clip(cr, 0, 1)
+
         self.uniform_crossover(cr)
+
         _, success_index = self.selection()
+
         self.update_adaptive_para(f, cr, success_index)
+
         if (self.current_generation % 100 == 0) | (self.current_generation == self.generation - 1):
             self.print_result()
         return np.min(self.x_eval_result), self.x[np.argmin(self.x_eval_result)]
@@ -130,6 +231,12 @@ class SHADE:
 
 def run_shade(problem_num, population_num=40, init_cr_mean=0.5, cr_std=0.1, init_f_mean=0.1, f_scaling_factor=0.1, h=5,
               difference_num=1, max_fes=1e5):
+    """Main function.
+
+    :param: Just like SHADE.__init__()
+    :return: Final solution, final fitness.
+    """
+    best_fitness, best_solution = np.nan, np.nan
     shade = SHADE(problem_num, population_num, init_cr_mean, cr_std, init_f_mean, f_scaling_factor, h,
                   difference_num, max_fes)
     for i in range(shade.generation):
