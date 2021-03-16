@@ -6,15 +6,17 @@
 #@Software: PyCharm
 
 import numpy as np
-from SHADE.bound_constrained_problem_set import Problem
+from open_source_version.SHADE.bounds_constrained_problem_set import Problem
 
 
 NP = 100  # Number of population
-INIT_CR_MEAN = 0.3  # CR is the crossover probability
-CR_STD = 0.1
-INIT_F_MEAN = 0.1  # F is the scaling factor when mutation
-F_SCALING_FACTOR = 0.1
-H = 5
+# CR is the crossover probability
+INIT_CR_MEAN = 0.3  # Initial mean of uniform distribution to generate CR.
+CR_STD = 0.1  # Standard deviation while generate CR obeying uniform distribution.
+# F is the scaling factor when mutation
+INIT_F_MEAN = 0.1  # Initial mean of uniform distribution to generate F.
+F_SCALING_FACTOR = 0.1  # The scaling factor of Cauchy distribution for generating f.
+H = 5  # Memory size
 DIFFERENCE_NUM = 1  # This variable means how many pairs of individual difference when do the current-to-pbest mutation
 MAX_FES = 1e5  # The max times number of function evaluation running
 
@@ -54,7 +56,7 @@ class SHADE:
         _sort_mat: A Numpy array, not in original SHADE just using for generating x_r faster.
 
     """
-    def __init__(self, problem_num, population_num=40, init_cr_mean=0.5, cr_std=0.1, init_f_mean=0.1,
+    def __init__(self, problem_num, population_num=40, init_cr_mean=0.5, cr_std=0.1, init_f_mean=0.1, 
                  f_scaling_factor=0.1, h=5, difference_num=1, max_fes=1e5):
         # Regular DE parameters
         self.problem = Problem(problem_num)
@@ -164,7 +166,7 @@ class SHADE:
             np.random.shuffle(rand_index)
             self.archive = self.archive[rand_index[:self.population_num]]
         return replace_index, success_index
-
+    
     def update_adaptive_para(self, f, cr, success_index):
         """Update memory
 
@@ -249,3 +251,4 @@ if __name__ == '__main__':
     problem_number = 0
     fitness, solutions = run_shade(problem_number, NP, INIT_CR_MEAN, CR_STD, INIT_F_MEAN, F_SCALING, H, DIFFERENCE_NUM,
                                    MAX_FES)
+
