@@ -6,7 +6,7 @@
 #@Software: PyCharm
 
 import numpy as np
-from open_source_version.SHADE.bound_constrained_problem_set import Problem
+from SHADE.bound_constrained_problem_set import Problem
 
 
 NP = 100  # Number of population
@@ -54,7 +54,7 @@ class SHADE:
         _sort_mat: A Numpy array, not in original SHADE just using for generating x_r faster.
 
     """
-    def __init__(self, problem_num, population_num=40, init_cr_mean=0.5, cr_std=0.1, init_f_mean=0.1, 
+    def __init__(self, problem_num, population_num=40, init_cr_mean=0.5, cr_std=0.1, init_f_mean=0.1,
                  f_scaling_factor=0.1, h=5, difference_num=1, max_fes=1e5):
         # Regular DE parameters
         self.problem = Problem(problem_num)
@@ -164,7 +164,7 @@ class SHADE:
             np.random.shuffle(rand_index)
             self.archive = self.archive[rand_index[:self.population_num]]
         return replace_index, success_index
-    
+
     def update_adaptive_para(self, f, cr, success_index):
         """Update memory
 
@@ -249,4 +249,3 @@ if __name__ == '__main__':
     problem_number = 0
     fitness, solutions = run_shade(problem_number, NP, INIT_CR_MEAN, CR_STD, INIT_F_MEAN, F_SCALING, H, DIFFERENCE_NUM,
                                    MAX_FES)
-
