@@ -6,6 +6,12 @@ class EpsilonMethod:
 
     Adding to constraints optimization GA, based on constraints, this class stores the violation, compares tow
     population and gives a replace index, or sort population.
+    The superiority is:
+        both are feasible solutions -- comparing fitness,
+        both are fake feasible solutions -- comparing fitness,
+        both are infeasible solutions -- comparing violation,
+        feasible solutions and (fake feasible solutions or infeasible solutions) -- choosing feasible solutions,
+        fake feasible solutions and infeasible solutions -- choosing fake feasible solutions.
 
     Attributes:
         h_num: An integer, number of equality constraints.
@@ -138,12 +144,16 @@ class EpsilonMethod:
                                            (~((self.best_popn_no_epsilon_violation < self.tolerance_thr) &
                                               (self.new_popn_no_epsilon_violation < self.tolerance_thr))) & \
                                            (new_popn_eval_result <= best_popn_eval_result)
-        feasible_n_infeasible_replace_index = (self.best_popn_violation >= self.tolerance_thr) & \
-                                              (self.new_popn_violation < self.tolerance_thr)
+        infeasible_replace_index = (self.best_popn_violation >= self.tolerance_thr) & \
+                                   (self.new_popn_violation < self.tolerance_thr)
+        feasible_n_fake_feasible_replace_index = ((self.best_popn_violation < self.tolerance_thr) &
+                                                  (self.best_popn_no_epsilon_violation > self.tolerance_thr)) & \
+                                                 (self.new_popn_no_epsilon_violation < self.tolerance_thr)
         replace_index = np.where(both_infeasible_replace_index |
                                  strict_both_feasible_replace_index |
-                                 feasible_n_infeasible_replace_index |
-                                 both_fake_feasible_replace_index)
+                                 both_fake_feasible_replace_index |
+                                 infeasible_replace_index |
+                                 feasible_n_fake_feasible_replace_index)
 
         # Success index needs to be more strict than replace index. <= become <.
         both_infeasible_success_index = (self.best_popn_violation >= self.tolerance_thr) & \
@@ -159,8 +169,9 @@ class EpsilonMethod:
                                            (new_popn_eval_result < best_popn_eval_result)
         success_index = np.where(both_infeasible_success_index |
                                  both_feasible_success_index |
-                                 feasible_n_infeasible_replace_index |
-                                 both_fake_feasible_success_index)
+                                 both_fake_feasible_success_index |
+                                 infeasible_replace_index |
+                                 feasible_n_fake_feasible_replace_index)
 
         # Some update about violation.
         if len(replace_index[0]) > 0:
@@ -190,8 +201,7 @@ class EpsilonMethod:
             fitness (A Numpy array shape is (num_popn), all fitness),
             violation (A Numpy array shape is (num_popn), all violation)
         """
-        violation = self.eval_violation_function(best_popn)
-        fitness = self.problem.objective_function(best_popn)
+        violation = self.best_popn_violation
         feasible_best_popn_index = np.where(violation <= self.tolerance_thr)
 
         # If there's no feasible solutions, assign np.nan.
@@ -202,7 +212,7 @@ class EpsilonMethod:
             best_feasible_best_popn_fitness = self.problem.objective_function(best_feasible_p[np.newaxis, :])[0]
         else:
             best_feasible_p, best_feasible_best_popn_fitness = np.nan, np.nan
-        return best_feasible_p, best_feasible_best_popn_fitness, fitness, violation
+        return best_feasible_p, best_feasible_best_popn_fitness, best_popn_eval_result, violation
 
     def compete_by_superiority(self, c1_eval_result, c2_eval_result, c1_index, c2_index):
         """Two groups compete by superiority sort method.
@@ -230,12 +240,16 @@ class EpsilonMethod:
                                            (~((c1_no_violation < self.tolerance_thr) &
                                               (c2_no_violation < self.tolerance_thr))) & \
                                            (c2_eval_result <= c1_eval_result)
-        feasible_n_infeasible_replace_index = (c1_violation >= self.tolerance_thr) & \
-                                              (c2_violation < self.tolerance_thr)
+        infeasible_replace_index = (c1_violation >= self.tolerance_thr) & \
+                                   (c2_violation < self.tolerance_thr)
+        feasible_n_fake_feasible_replace_index = ((c1_violation < self.tolerance_thr) &
+                                                  (c1_violation > self.tolerance_thr)) & \
+                                                 (c2_no_violation < self.tolerance_thr)
         replace_index = np.where(both_infeasible_replace_index |
                                  both_feasible_replace_index |
-                                 feasible_n_infeasible_replace_index |
-                                 both_fake_feasible_replace_index)
+                                 both_fake_feasible_replace_index |
+                                 infeasible_replace_index |
+                                 feasible_n_fake_feasible_replace_index)
         return replace_index
 
     def sort_by_superiority(self, eval_result):

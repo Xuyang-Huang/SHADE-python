@@ -299,7 +299,7 @@ def run_shade(problem_num, population_num=40, init_cr_mean=0.5, cr_std=0.1, init
 
 
 if __name__ == '__main__':
-    problem_number = 28
+    problem_number = 1
     best_feasible_solution, best_feasible_fitness = run_shade(problem_number, NP, INIT_CR_MEAN, CR_STD, INIT_F_MEAN,
                                                               F_SCALING_FACTOR, H, DIFFERENCE_NUM, MAX_FES,
                                                               INIT_EPSILON_POSITION, EPSILON_MAX_GENERATION, CP)
